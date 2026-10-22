@@ -1,0 +1,65 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Проверка готовой модели человека</title><style>body{margin:0;background:#17202c;color:#fff;font:15px system-ui}#info{position:absolute;bottom:14px;left:12px;right:12px;max-width:520px;max-height:38vh;overflow:auto;background:#101923dd;padding:15px;border-radius:12px;z-index:1}button,input{margin:5px 4px 0 0;padding:9px;border:0;border-radius:8px}#msg{font-size:12px;color:#cbd5e1;margin:8px 0}canvas{display:block}small{color:#a8bacd}</style></head><body><div id="info"><b>Персонаж 1.2 · исправление анимаций</b><div id="msg">Загрузка реального GLB из открытого репозитория GitHub…</div><button id="front">Спереди</button><button id="side">Сбоку</button><button id="back">Сзади</button><button id="turn">Вращение: выкл.</button><div><button id="idle">Стойка</button><button id="walk">Ходьба</button><button id="run">Бег</button><button id="bones">Скелет: выкл.</button></div><small>Проверь сгибание рук и ног. Это тестовые процедурные движения костей, не готовые анимации. Поворот пальцем, масштаб двумя.</small></div><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script type="module">
+import * as THREE from 'three';import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+const msg=document.getElementById('msg'),scene=new THREE.Scene();scene.background=new THREE.Color('#293649');const camera=new THREE.PerspectiveCamera(38,innerWidth/innerHeight,.01,200);camera.position.set(0,1.3,5);const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;document.body.append(renderer.domElement);const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.target.set(0,1,0);scene.add(new THREE.HemisphereLight(0xffffff,0x657188,2.4));const light=new THREE.DirectionalLight(0xffffff,2.3);light.position.set(3,7,6);scene.add(light);const grid=new THREE.GridHelper(10,20,0x536171,0x34404c);scene.add(grid);let model=null,mixer=null,clips=[],clipIndex=-1,auto=false,mode="idle",motionTime=0,skeletonHelper=null,boneDrivers=[],skinnedCount=0;const clock=new THREE.Clock();
+function load(url){msg.textContent='Загружаю GLB…';new GLTFLoader().load(url,g=>{if(model)scene.remove(model);if(skeletonHelper){scene.remove(skeletonHelper);skeletonHelper=null}boneDrivers=[];skinnedCount=0;model=g.scene;scene.add(model);const box=new THREE.Box3().setFromObject(model);const sz=box.getSize(new THREE.Vector3()),ctr=box.getCenter(new THREE.Vector3());if(!Number.isFinite(sz.y)||sz.y<=0){msg.textContent='Ошибка размеров модели';return}model.position.sub(ctr);model.position.y+=sz.y/2;const h=sz.y;camera.position.set(0,h*.57,h*2.15);controls.target.set(0,h*.5,0);camera.near=.01;camera.far=Math.max(200,h*30);camera.updateProjectionMatrix();controls.update();grid.position.y=0;setupBones();clips=g.animations;mixer=clips.length?new THREE.AnimationMixer(model):null;clipIndex=-1;msg.textContent=`Модель загружена · ${boneDrivers.length} управляемых костей · ${skinnedCount} skinned mesh · ${clips.length} встроенных анимаций. ${boneDrivers.length?'Выбери движение.':'Управляемые кости не распознаны: движения недоступны.'}`;},undefined,e=>{msg.textContent='Не удалось загрузить файл с GitHub: '+(e.message||e)+'. Проверь подключение к интернету.';});}
+load('https://raw.githubusercontent.com/programasweights/avatar/main/public/assets/character.glb');document.getElementById('front').onclick=()=>{camera.position.set(0,controls.target.y,Math.max(3,camera.position.distanceTo(controls.target)));controls.update()};document.getElementById('side').onclick=()=>{camera.position.set(Math.max(3,camera.position.distanceTo(controls.target)),controls.target.y,0);controls.update()};document.getElementById('back').onclick=()=>{camera.position.set(0,controls.target.y,-Math.max(3,camera.position.distanceTo(controls.target)));controls.update()};document.getElementById('turn').onclick=e=>{auto=!auto;e.target.textContent='Вращение: '+(auto?'вкл.':'выкл.')};function setupBones(){
+ const all=[];model.traverse(o=>{if(o.isBone)all.push(o);if(o.isSkinnedMesh)skinnedCount++});
+ const used=new Set();
+ const types=[
+ ['leftArm',/(?:left|_l\b|\.l\b).*?(?:upperarm|upper_arm|arm|shoulder)|(?:upperarm|upper_arm|arm|shoulder).*?(?:left|_l\b|\.l\b)/i],
+ ['rightArm',/(?:right|_r\b|\.r\b).*?(?:upperarm|upper_arm|arm|shoulder)|(?:upperarm|upper_arm|arm|shoulder).*?(?:right|_r\b|\.r\b)/i],
+ ['leftLeg',/(?:left|_l\b|\.l\b).*?(?:upleg|upperleg|upper_leg|thigh|hip)|(?:upleg|upperleg|upper_leg|thigh|hip).*?(?:left|_l\b|\.l\b)/i],
+ ['rightLeg',/(?:right|_r\b|\.r\b).*?(?:upleg|upperleg|upper_leg|thigh|hip)|(?:upleg|upperleg|upper_leg|thigh|hip).*?(?:right|_r\b|\.r\b)/i],
+ ['leftKnee',/(?:left|_l\b|\.l\b).*?(?:lowerleg|lower_leg|shin|calf|knee)|(?:lowerleg|lower_leg|shin|calf|knee).*?(?:left|_l\b|\.l\b)/i],
+ ['rightKnee',/(?:right|_r\b|\.r\b).*?(?:lowerleg|lower_leg|shin|calf|knee)|(?:lowerleg|lower_leg|shin|calf|knee).*?(?:right|_r\b|\.r\b)/i]
+ ];
+ // Read names from the actual loaded GLB, rather than assuming a standard skeleton.
+ const norm=n=>n.toLowerCase().replace(/[^a-z0-9]/g,'');
+ const names=all.map(b=>b.name);
+ for(const [kind] of types){
+   const side=kind.startsWith('left')?'left':'right';
+   const joint=kind.endsWith('Arm')?'arm':kind.endsWith('Knee')?'knee':'leg';
+   const aliases=joint==='arm'?['upperarm','uparm','arm','shoulder']:joint==='leg'?['upperleg','upleg','thigh','hip','leg']:['lowerleg','lowleg','shin','calf','knee','leg'];
+   const score=b=>{
+     const n=norm(b.name);
+     const hasSide=n.includes(side)||n.startsWith(side==='left'?'l':'r')||n.endsWith(side==='left'?'l':'r');
+     if(!hasSide)return -100;
+     let v=aliases.reduce((best,a,i)=>n.includes(a)?Math.max(best,25-i*3):best,-30);
+     if(joint==='arm'&&/forearm|lowerarm|hand|wrist/.test(n))v-=60;
+     if(joint==='leg'&&/lower|shin|knee|foot|toe/.test(n))v-=60;
+     if(joint==='knee'&&/upper|thigh|foot|toe/.test(n))v-=60;
+     return v;
+   };
+   const matches=all.filter(b=>!used.has(b)).sort((a,b)=>score(b)-score(a));
+   if(matches.length&&score(matches[0])>0){const bone=matches[0];used.add(bone);boneDrivers.push({kind,bone,base:bone.quaternion.clone()})}
+ }
+ // Expose bone names for debugging if this GLB uses a custom naming convention.
+ if(!boneDrivers.length){msg.textContent='Кости найдены: '+all.length+'. Имена: '+names.slice(0,24).join(', ')}
+ skeletonHelper=new THREE.SkeletonHelper(model);skeletonHelper.visible=false;scene.add(skeletonHelper);
+ document.getElementById('bones').textContent='Скелет: выкл.';
+}
+function setMode(next){mode=next;motionTime=0;if(mixer)mixer.stopAllAction();
+ for(const id of ['idle','walk','run'])document.getElementById(id).style.background=id===mode?'#8de0c4':'';
+ if(!boneDrivers.length)msg.textContent='Кости не распознаны. Имена: '+(()=>{const a=[];model.traverse(o=>{if(o.isBone)a.push(o.name)});return a.slice(0,35).join(', ')})();
+}
+for(const id of ['idle','walk','run'])document.getElementById(id).onclick=()=>setMode(id);
+document.getElementById('bones').onclick=e=>{if(!skeletonHelper){msg.textContent='Скелет не найден';return}skeletonHelper.visible=!skeletonHelper.visible;e.target.textContent='Скелет: '+(skeletonHelper.visible?'вкл.':'выкл.')};
+function animateBones(dt){
+ motionTime+=dt;
+ const speed=mode==='run'?10:mode==='walk'?5:0;
+ const swing=mode==='run'?.68:mode==='walk'?.36:0;
+ for(const d of boneDrivers){
+  d.bone.quaternion.copy(d.base);
+  if(!speed)continue;
+  const left=d.kind.startsWith('left');
+  const phase=motionTime*speed+(left?0:Math.PI);
+  let angle=0;
+  if(d.kind.endsWith('Arm'))angle=-Math.sin(phase)*swing*.65;
+  if(d.kind.endsWith('Leg'))angle=Math.sin(phase)*swing;
+  if(d.kind.endsWith('Knee'))angle=Math.max(0,-Math.sin(phase))*(mode==='run'?.8:.42);
+  // Rotate in bone-local frame. Bind pose is always preserved as reference.
+  d.bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),angle));
+ }
+}
+setMode('idle');
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});function frame(){requestAnimationFrame(frame);const dt=clock.getDelta();if(mixer)mixer.update(dt);if(model)animateBones(dt);if(auto&&model)model.rotation.y+=dt*.4;controls.update();renderer.render(scene,camera)}frame();</script></body></html>
